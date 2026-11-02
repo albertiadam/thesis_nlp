@@ -24,7 +24,8 @@ The analysis runs in five steps, each in its own module:
 | 4. Post-processing | [post_processor.py](post_processor.py) | Compares the topics of the two years and summarizes the skipped companies |
 | 5. Topic mapping | [utils.py](utils.py) | Finds the stable topics and matches them between the years and the four model settings |
 
-[main.py](main.py) runs steps 1–4 in order, once for each model setting. [utils.py](utils.py) is run separately:
+[main.py](main.py) runs steps 1–4 in order for one model setting, so it is run once for each of the four settings.
+[utils.py](utils.py) is run separately:
 it helps choose the number of topics before step 3, and runs the topic mapping after all four settings are done.
 
 ### 1. Preprocessing – selecting the filings
@@ -71,12 +72,15 @@ A filing is skipped, and the reason is recorded, when:
 
 ### 4. Post-processing
 
-- **Transition table:** a contingency table of 2024 topic (rows) against 2025 topic (columns).
+- **Transition table:** a contingency table of 2024 topic (rows) against 2025 topic (columns), with topics numbered
+  from 1. The number of companies on its diagonal ("unchanged companies") is only meaningful for the combined models
+  (see step 5).
 - **Chi-square test of independence:** tests whether a company's 2025 topic is related to its 2024 topic.
 - **Cramér's V:** the strength of that relationship, from 0 (unrelated) to 1 (fully determined).
 - **Skipped companies:** counted by reason and by industry (SIC description), saved as tables and shown in two charts.
   Every skipped filing is counted, so a company skipped in both years counts once in each year.
-  In the charts the three rare reasons (wrong start, too long, missing section end) are merged into "other".
+  In the charts every reason except missing Item 1C and too short (wrong start, too long, missing section end,
+  empty after processing) is merged into "other", since these are rare.
   The chart titles, axis labels and reasons are in Hungarian (e.g. "other" is "Egyéb"), the industry names stay in English.
   - *All skipped filings:* count per reason, and the 10 industries with the most skipped filings, each bar stacked by reason.
   - *By year:* the share of all filings skipped for each reason, and the share of each industry's filings skipped,
@@ -101,9 +105,9 @@ a small one just by containing it.
 1. **Topic overlap within each run:** each 2024 topic is paired with the 2025 topic that receives most of its
    companies, and their overlap is calculated. This shows which topics persist from 2024 to 2025.
    The table of every run is printed to the console; the saved output is `output/data (for all)/topic_similarity.txt`.
-   In the combined runs every topic is paired with itself (the same model labels both years), so the overlap shows
-   how many companies stayed in the topic. In the separate runs the pairing also shows which 2025 topic continues
-   which 2024 topic.
+   In the combined runs the same model labels both years, so a topic is expected to be paired with itself
+   (in the saved results every topic is), and the overlap shows how many companies stayed in the topic.
+   In the separate runs the pairing also shows which 2025 topic continues which 2024 topic.
 2. **Stable topics:** the 3 pairs with the highest overlap in the reference run (`Bigram, évenkénti`). In the saved
    results these are 4 → 6 (0.60), 5 → 5 (0.66) and 6 → 3 (0.62), see `topic_similarity.txt`.
 3. **Topic mapping table:** each stable topic is matched to the topic with the highest overlap in every other run,
@@ -198,7 +202,9 @@ python utils.py
    overlap table of every run (saved by hand as `topic_similarity.txt`), and saves the topic mapping table
    (`topic_mapping.csv`, `topic_mapping.png`).
 
-The graph and table labels are in Hungarian.
+The graph and table labels are in Hungarian. The two parts are independent, and the graphs take much longer
+(they train 18 models). To run only the topic mapping, comment out the graph calls in the `__main__` block
+at the bottom of [utils.py](utils.py).
 
 Before running it, `main.py` has to be run once, so that `process_outputs/processed_data_{year}.json` exists.
 For the topic mapping, `main.py` has to be run with all four settings (6 topics), and each
@@ -226,8 +232,8 @@ Every run writes to `process_outputs/` (not tracked by git):
 | `coherence_graph.png`, `elbow_graph.png` | graphs from `utils.py` |
 | `topic_mapping.csv`, `topic_mapping.png` | topic mapping table of the four saved LDA runs, from `utils.py` |
 
-The chi-square statistic, p-value, Cramér's V and the skipped company counts by reason and by industry
-are printed to the console.
+The contingency table, the number of unchanged companies, the chi-square statistic, p-value, Cramér's V and
+the skipped company counts by reason and by industry are printed to the console.
 
 ### Saved results
 
@@ -242,8 +248,23 @@ The [output/](output/) folder holds the results used in the thesis:
 | `bigram, separate` | bigrams, one model per year |
 
 Each LDA folder contains the comparison results, the contingency table, the pyLDAvis visualizations and
-`contingency.txt` with the printed statistics. `kontingencia_tablak.xlsx` holds the four contingency tables
-in one 2×2 grid, for the thesis.
+`contingency.txt` with the printed statistics.
+
+`processed_data_{year}.json` is ignored by git (`*.json` in `.gitignore`), so it is only in the local copy of
+`data (for all)`. To use `utils.py` on a fresh clone, run `main.py` first.
+
+### Thesis attachments
+
+The [attachments/](attachments/) folder holds the tables and figures attached to the thesis, made from the saved
+results (the labels are in Hungarian):
+
+| File | Content |
+|---|---|
+| `M1_top30_stabil_temak.xlsx` | top 30 words of each stable topic in every run and year, one sheet per stable topic, with the words common to the runs |
+| `M2_stabil_topikok.xlsx` | the three stable topics: their meaning and their common bigrams and single words |
+| `M3_top30_instabil_bigram_kulon.xlsx` | top 30 bigrams of the unstable topics of the `bigram, separate` run |
+| `M4_kontingencia_tablak.xlsx` | the four contingency tables in one 2×2 grid |
+| `M5`–`M8` `_intertopic_*.png` | pyLDAvis intertopic distance maps: bigram separate 2024 and 2025, bigram combined 2025, single words separate 2025 |
 
 ## Limitations
 
@@ -253,7 +274,7 @@ in one 2×2 grid, for the thesis.
 - **Section extraction:** Item 1C is found with regular expressions. Filings with unusual headings are skipped,
   and the skipped companies are summarized by reason and industry to show what was left out.
 - **Separate models:** when LDA runs separately for each year, topic numbers are not matched between the years.
-  Topic 0 in 2024 is not necessarily the same theme as topic 0 in 2025, so the transition table and Cramér's V
+  Topic 1 in 2024 is not necessarily the same theme as topic 1 in 2025, so the transition table and Cramér's V
   are only meaningful for the combined model, or after matching the topics.
 - **Topic mapping:** topics are matched by their companies, not by their words. A match means the same group of
   companies, which usually but not necessarily means the same theme; the top words of matched topics can be checked
